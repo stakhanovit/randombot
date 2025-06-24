@@ -12,7 +12,9 @@ const client = new Client({
 const CHANNELS = {
     STATIC_AVATAR: '1232746006659989625',  
     GIF_AVATAR: '1232745960161939477',     
-    BANNER_CHANGE: '1232746029359562873'   
+    BANNER_CHANGE: '1232746029359562873',
+    USERNAME_CHANGE: '1386438020265414867',
+    NICKNAME_CHANGE: '1386438020265414867'   
 };
 
 const userCache = new Map();
@@ -54,6 +56,78 @@ async function sendNotification(channelId, user, changeType, oldValue, newValue)
     }
 }
 
+async function sendUsernameNotification(channelId, user, oldUsername, newUsername) {
+    try {
+        const channel = await client.channels.fetch(channelId);
+        if (channel) {
+            const embed = {
+                color: 0x9c41ff,
+                description: `username disponível: \`${oldUsername}\``,
+                footer: {
+                    text: `GIFZADA - ${user.username}(${user.id})`,
+                    icon_url: channel.guild.iconURL({ size: 128 })
+                }
+            };
+
+            await channel.send({ embeds: [embed] });
+            console.log(`✅ Username notification sent for ${user.tag}: ${oldUsername} is now available`);
+        }
+    } catch (error) {
+        console.error(`❌ Failed to send username notification for ${user.tag}:`, error.message);
+        if (error.code === 50013) {
+            console.error(`Bot needs Send Messages permission in channel ${channelId}`);
+        }
+    }
+}
+
+async function sendNicknameNotification(channelId, member, oldNickname, newNickname) {
+    try {
+        const channel = await client.channels.fetch(channelId);
+        if (channel) {
+            const embed = {
+                color: 0x9c41ff,
+                description: `nickname disponível: \`${oldNickname}\``,
+                footer: {
+                    text: `GIFZADA - ${member.user.username}(${member.user.id})`,
+                    icon_url: channel.guild.iconURL({ size: 128 })
+                }
+            };
+
+            await channel.send({ embeds: [embed] });
+            console.log(`✅ Nickname notification sent for ${member.user.tag}: ${oldNickname} is now available`);
+        }
+    } catch (error) {
+        console.error(`❌ Failed to send nickname notification for ${member.user.tag}:`, error.message);
+        if (error.code === 50013) {
+            console.error(`Bot needs Send Messages permission in channel ${channelId}`);
+        }
+    }
+}
+
+async function sendDisplayNameNotification(channelId, user, oldDisplayName, newDisplayName) {
+    try {
+        const channel = await client.channels.fetch(channelId);
+        if (channel) {
+            const embed = {
+                color: 0x9c41ff,
+                description: `display name disponível: \`${oldDisplayName}\``,
+                footer: {
+                    text: `GIFZADA - ${user.username}(${user.id})`,
+                    icon_url: channel.guild.iconURL({ size: 128 })
+                }
+            };
+
+            await channel.send({ embeds: [embed] });
+            console.log(`✅ Display Name notification sent for ${user.tag}: ${oldDisplayName} is now available`);
+        }
+    } catch (error) {
+        console.error(`❌ Failed to send display name notification for ${user.tag}:`, error.message);
+        if (error.code === 50013) {
+            console.error(`Bot needs Send Messages permission in channel ${channelId}`);
+        }
+    }
+}
+
 async function checkUserChanges(userId) {
     try {
         const fullUser = await client.users.fetch(userId, { force: true });
@@ -62,7 +136,9 @@ async function checkUserChanges(userId) {
         if (!cached) {
             userCache.set(userId, {
                 avatar: fullUser.avatar,
-                banner: fullUser.banner
+                banner: fullUser.banner,
+                username: fullUser.username,
+                displayName: fullUser.displayName
             });
             return;
         }
@@ -124,6 +200,37 @@ async function checkUserChanges(userId) {
 
             cached.banner = fullUser.banner;
         }
+
+        // Check username changes
+        if (cached.username !== fullUser.username) {
+            console.log(`👤 Username change detected for ${fullUser.id}: ${cached.username} → ${fullUser.username}`);
+
+            await sendUsernameNotification(
+                CHANNELS.USERNAME_CHANGE,
+                fullUser,
+                cached.username,
+                fullUser.username
+            );
+
+            cached.username = fullUser.username;
+        }
+
+        // Check display name changes
+        if (cached.displayName !== fullUser.displayName) {
+            console.log(`🏷️ Display Name change detected for ${fullUser.id}: ${cached.displayName || 'None'} → ${fullUser.displayName || 'None'}`);
+
+            // Send notification if old display name existed
+            if (cached.displayName) {
+                await sendDisplayNameNotification(
+                    CHANNELS.USERNAME_CHANGE,
+                    fullUser,
+                    cached.displayName,
+                    fullUser.displayName
+                );
+            }
+
+            cached.displayName = fullUser.displayName;
+        }
         
     } catch (error) {
         // Silenciar erros para não spam no console
@@ -141,8 +248,12 @@ client.once(Events.ClientReady, async () => {
                 allGuildMembers.add(member.id);
                 userCache.set(member.id, {
                     avatar: member.user.avatar,
-                    banner: member.user.banner
+                    banner: member.user.banner,
+                    username: member.user.username,
+                    displayName: member.user.displayName
                 });
+                
+                
             });
             console.log(`📥 Loaded ${guild.members.cache.size} members from ${guild.name}`);
         } catch (error) {
@@ -188,7 +299,9 @@ client.on(Events.GuildMemberAdd, (member) => {
     allGuildMembers.add(member.id);
     userCache.set(member.id, {
         avatar: member.user.avatar,
-        banner: member.user.banner
+        banner: member.user.banner,
+        username: member.user.username,
+        displayName: member.user.displayName
     });
     console.log(`➕ New member added: ${member.user.tag}`);
 });
