@@ -36,7 +36,7 @@ async function sendNotification(channelId, user, changeType, oldValue, newValue)
                 }
             };
 
-            // Set the main image based on change type with higher resolution
+          
             if (changeType.includes('Banner')) {
                 if (newValue !== 'None') {
                     embed.image = { url: newValue };
