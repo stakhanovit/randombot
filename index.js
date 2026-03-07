@@ -212,7 +212,7 @@ client.on(Events.InteractionCreate, async interaction => {
             if (now < expirationTime) {
                 const timeLeft = ((expirationTime - now) / 1000).toFixed(0);
                 return interaction.reply({ 
-                    content: `Voce esta em cooldown. Aguarde **${timeLeft} segundos** antes de reportar novamente.`, 
+                    content: `Voce esta em cooldown. Aguarde ${timeLeft} segundos antes de reportar novamente.`, 
                     flags: MessageFlags.Ephemeral 
                 });
             }
@@ -369,7 +369,7 @@ client.on(Events.InteractionCreate, async interaction => {
         }
     }
 
-    // 3. DECISÃO DA MODERAÇÃO (APAGAR OU MANTER)
+    // 3. DECISÃO DA MODERAÇÃO (APAGAR OU MANTER - EDITA O CONTAINER V2)
     if (interaction.isButton() && (interaction.customId.startsWith('del_') || interaction.customId.startsWith('keep_'))) {
         if (!interaction.member.roles.cache.has(ROLES.MODERATOR)) {
             return interaction.reply({ 
@@ -390,26 +390,41 @@ client.on(Events.InteractionCreate, async interaction => {
                 await targetMessage.delete();
 
                 resultText = `O conteudo infrator foi apagado por ${interaction.user}.`;
-                resultColor = 0x00ff00; 
+                resultColor = 0x00ff00; // Verde
             } catch (error) {
                 resultText = `A mensagem ja nao existe mais no canal. Acao registrada por ${interaction.user}.`;
-                resultColor = 0xffaa00; 
+                resultColor = 0xffaa00; // Laranja (Aviso)
             }
         } else if (action === 'keep') {
             resultText = `O moderador ${interaction.user} decidiu manter o conteudo.`;
-            resultColor = 0x5865f2; 
+            resultColor = 0x5865f2; // Azul original
         }
 
-        const resolvedContainer = new ContainerBuilder()
-            .setAccentColor(resultColor)
-            .addTextDisplayComponents(
-                new TextDisplayBuilder().setContent(resultText)
-            );
+        // Resgata o contêiner original (V2) para ser editado
+        let rawContainer = interaction.message.components[0]?.toJSON();
 
-        await interaction.update({ 
-            flags: MessageFlags.IsComponentsV2,
-            components: [resolvedContainer] 
-        });
+        if (rawContainer && rawContainer.components) {
+            // Remove a linha dos botões de denúncia para não ser clicada novamente (Type 1 é a ActionRow)
+            rawContainer.components = rawContainer.components.filter(comp => comp.type !== 1);
+            
+            // Muda a cor do contêiner para o status da resolução
+            rawContainer.accent_color = resultColor;
+
+            // Encontra o componente de texto e anexa o aviso final da decisão
+            const textComp = rawContainer.components.find(comp => comp.content !== undefined);
+            if (textComp) {
+                textComp.content += `\n\n> **STATUS:** ${resultText}`;
+            }
+
+            // Atualiza a mensagem substituindo com o contêiner carimbado e sem botões
+            await interaction.update({ 
+                flags: MessageFlags.IsComponentsV2,
+                components: [rawContainer] 
+            });
+        } else {
+            // Fallback caso falhe em ler o contêiner por algum motivo
+            await interaction.update({ content: 'Status da denuncia atualizado, mas houve falha ao editar a interface visual.', components: [] });
+        }
     }
 });
 
