@@ -1,7 +1,11 @@
-const { Client, GatewayIntentBits, Events, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { 
+    Client, GatewayIntentBits, Events, ActionRowBuilder, ButtonBuilder, ButtonStyle,
+    MessageFlags, ContainerBuilder, TextDisplayBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder,
+    ComponentType
+} = require('discord.js');
 const Database = require('better-sqlite3');
 
-// Inicia o banco de dados (ele cria o arquivo database.sqlite automaticamente)
+// Inicia o banco de dados
 const db = new Database('database.sqlite');
 
 // Cria a tabela caso ela não exista
@@ -15,7 +19,7 @@ db.prepare(`
     )
 `).run();
 
-// Comandos de banco de dados preparados para velocidade
+// Comandos de banco de dados preparados
 const getUserStmt = db.prepare('SELECT * FROM users WHERE id = ?');
 const insertUserStmt = db.prepare('INSERT INTO users (id, username, display_name, avatar, banner) VALUES (?, ?, ?, ?, ?)');
 const updateUserStmt = db.prepare('UPDATE users SET username = ?, display_name = ?, avatar = ?, banner = ? WHERE id = ?');
@@ -24,7 +28,7 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildPresences // Necessário para o Discord enviar as atualizações de perfil em tempo real
+        GatewayIntentBits.GuildPresences
     ]
 });
 
@@ -34,48 +38,60 @@ const CHANNELS = {
     BANNER_CHANGE: '1445884208970076321',
     USERNAME_CHANGE: '1478232755635617983',
     NICKNAME_CHANGE: '1478232755635617983',
-    REPORT_CHANNEL: '1479649622149435486' // Canal de denúncias
+    REPORT_CHANNEL: '1479649622149435486' 
 };
 
 const ROLES = {
-    MODERATOR: '1165308513355046973' // Cargo de moderação que pode aceitar/recusar denúncias
+    MODERATOR: '1165308513355046973'
 };
 
 function isGif(url) {
     return url && (url.includes('.gif') || url.includes('a_'));
 }
 
-// Cria a fileira com o botão "Reportar" em vermelho
+// Cria a ActionRow com o botão "Reportar"
 const getReportActionRow = () => {
     return new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId('btn_report')
             .setLabel('Reportar')
-            .setStyle(ButtonStyle.Danger) // Botão Vermelho
+            .setStyle(ButtonStyle.Danger)
     );
 };
+
+// ----------------------------------------------------
+// SISTEMA DE NOTIFICAÇÕES USANDO COMPONENTS V2
+// ----------------------------------------------------
 
 async function sendNotification(channelId, user, changeType, oldValue, newValue) {
     try {
         const channel = await client.channels.fetch(channelId);
         if (channel) {
-            const embed = {
-                color: 0x9c41ff,
-                footer: {
-                    text: `GIFZADA - ${user.username}(${user.id})`,
-                    icon_url: channel.guild.iconURL({ size: 128 })
-                }
-            };
+            // 1. Cria o contêiner principal (antiga embed)
+            const container = new ContainerBuilder()
+                .setAccentColor(0x9c41ff)
+                .addTextDisplayComponents(
+                    new TextDisplayBuilder().setContent(`**Notificação de ${changeType}**\nGIFZADA - ${user.username} (${user.id})`)
+                );
 
-            if (changeType.includes('Banner') && newValue !== 'None') {
-                embed.image = { url: newValue };
-            } else if (changeType.includes('Avatar') && newValue !== 'None') {
-                embed.image = { url: newValue };
+            // 2. Adiciona a imagem usando MediaGallery se for Avatar ou Banner
+            if ((changeType.includes('Banner') || changeType.includes('Avatar')) && newValue !== 'None') {
+                container.addMediaGalleryComponents(
+                    new MediaGalleryBuilder().addItems(
+                        new MediaGalleryItemBuilder().setURL(newValue)
+                    )
+                );
             }
 
-            // Envia a embed JUNTO com o componente do botão
-            await channel.send({ embeds: [embed], components: [getReportActionRow()] });
-            console.log(`✅ ${changeType} notification sent for ${user.tag}`);
+            // 3. Adiciona o botão DENTRO do contêiner!
+            container.addActionRowComponents(getReportActionRow());
+
+            // 4. Envia com a flag obrigatória do V2
+            await channel.send({ 
+                flags: MessageFlags.IsComponentsV2,
+                components: [container] 
+            });
+            console.log(`✅ ${changeType} notification sent for ${user.tag} (V2 Container)`);
         }
     } catch (error) {
         console.error(`❌ Failed to send ${changeType} notification for ${user.tag}:`, error.message);
@@ -86,23 +102,27 @@ async function sendTextNotification(channelId, user, type, oldText) {
     try {
         const channel = await client.channels.fetch(channelId);
         if (channel && oldText) {
-            const embed = {
-                color: 0x9c41ff,
-                description: `${type} disponível: \`${oldText}\``,
-                footer: {
-                    text: `GIFZADA - ${user.username}(${user.id})`,
-                    icon_url: channel.guild.iconURL({ size: 128 })
-                }
-            };
-            
-            // Envia a embed JUNTO com o componente do botão
-            await channel.send({ embeds: [embed], components: [getReportActionRow()] });
-            console.log(`✅ ${type} notification sent for ${user.tag}: ${oldText} is now available`);
+            const container = new ContainerBuilder()
+                .setAccentColor(0x9c41ff)
+                .addTextDisplayComponents(
+                    new TextDisplayBuilder().setContent(`${type} disponível: \`${oldText}\`\nGIFZADA - ${user.username} (${user.id})`)
+                )
+                .addActionRowComponents(getReportActionRow());
+
+            await channel.send({ 
+                flags: MessageFlags.IsComponentsV2,
+                components: [container] 
+            });
+            console.log(`✅ ${type} notification sent for ${user.tag} (V2 Container)`);
         }
     } catch (error) {
         console.error(`❌ Failed to send ${type} notification for ${user.tag}:`, error.message);
     }
 }
+
+// ----------------------------------------------------
+// PROCESSAMENTO DE USUÁRIOS
+// ----------------------------------------------------
 
 async function processUserChange(userId) {
     try {
@@ -142,14 +162,14 @@ async function processUserChange(userId) {
         if (dbUser.username !== currentUsername) {
             hasChanges = true;
             if (dbUser.username) {
-                await sendTextNotification(CHANNELS.USERNAME_CHANGE, fullUser, 'username', dbUser.username);
+                await sendTextNotification(CHANNELS.USERNAME_CHANGE, fullUser, 'Username', dbUser.username);
             }
         }
 
         if (dbUser.display_name !== currentDisplayName) {
             hasChanges = true;
             if (dbUser.display_name) {
-                await sendTextNotification(CHANNELS.USERNAME_CHANGE, fullUser, 'display name', dbUser.display_name);
+                await sendTextNotification(CHANNELS.USERNAME_CHANGE, fullUser, 'Display name', dbUser.display_name);
             }
         }
 
@@ -162,11 +182,14 @@ async function processUserChange(userId) {
     }
 }
 
-// Gerenciador de Interações (Cliques em Botões)
+// ----------------------------------------------------
+// INTERAÇÕES E BOTÕES (DENÚNCIAS)
+// ----------------------------------------------------
+
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isButton()) return;
 
-    // 1. Usuário clicou em REPORTAR
+    // 1. Usuário clicou no botão REPORTAR do Container V2
     if (interaction.customId === 'btn_report') {
         const reportChannel = client.channels.cache.get(CHANNELS.REPORT_CHANNEL);
         if (!reportChannel) {
@@ -174,25 +197,43 @@ client.on(Events.InteractionCreate, async interaction => {
         }
 
         const reportedMessage = interaction.message;
-        const reportedEmbed = reportedMessage.embeds[0];
-        
-        // Pega a URL da imagem (se tiver) ou a descrição da embed
-        const contentReported = reportedEmbed?.image?.url || reportedEmbed?.description || 'Conteúdo desconhecido';
+        let contentReported = 'Conteúdo desconhecido';
 
+        try {
+            // Lendo dados de um Container V2 para pegar a imagem ou texto da denúncia
+            if (reportedMessage.flags.has(MessageFlags.IsComponentsV2)) {
+                const containerData = reportedMessage.components[0]?.toJSON();
+                if (containerData && containerData.components) {
+                    for (const sub of containerData.components) {
+                        if (sub.type === ComponentType.MediaGallery) {
+                            contentReported = sub.items?.[0]?.media?.url || 'Imagem na galeria';
+                        } else if (sub.type === ComponentType.TextDisplay && contentReported === 'Conteúdo desconhecido') {
+                            contentReported = sub.content;
+                        }
+                    }
+                }
+            } else {
+                // Fallback caso seja uma mensagem antiga
+                contentReported = reportedMessage.embeds[0]?.image?.url || reportedMessage.embeds[0]?.description || 'Conteúdo antigo';
+            }
+        } catch (err) {
+            console.error('Erro ao tentar ler o V2 container para o reporte:', err);
+        }
+
+        // A denúncia que vai para a moderação ainda pode ser enviada como Embed clássica ou V2 (aqui mantive Clássica por simplicidade)
         const reportEmbed = {
             color: 0xff0000,
             title: '🚨 Nova Denúncia Registrada',
-            description: `**Denunciante:** ${interaction.user} (${interaction.user.id})\n**Canal:** <#${interaction.channel.id}>\n**Mensagem Original:** [Ir para a mensagem](${reportedMessage.url})`,
+            description: `**Denunciante:** ${interaction.user} (${interaction.user.id})\n**Canal:** <#${interaction.channel.id}>\n**Mensagem Original:** [Acessar a mensagem](${reportedMessage.url})`,
             fields: [
                 {
-                    name: 'Conteúdo denunciado',
-                    value: typeof contentReported === 'string' ? contentReported : 'Imagem inclusa na embed'
+                    name: 'Informação extraída',
+                    value: contentReported.length > 1024 ? contentReported.substring(0, 1021) + '...' : contentReported
                 }
             ],
             timestamp: new Date().toISOString()
         };
 
-        // Botões para a equipe de moderação avaliar
         const modActionRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId(`del_${interaction.channel.id}_${reportedMessage.id}`)
@@ -204,54 +245,42 @@ client.on(Events.InteractionCreate, async interaction => {
                 .setStyle(ButtonStyle.Secondary)
         );
 
-        // Envia a denúncia mencionando o cargo FORA da embed
         await reportChannel.send({
             content: `<@&${ROLES.MODERATOR}>`, 
             embeds: [reportEmbed],
             components: [modActionRow]
         });
 
-        return interaction.reply({ content: '✅ A denúncia foi enviada com sucesso aos moderadores.', ephemeral: true });
+        return interaction.reply({ content: '✅ Sua denúncia foi enviada à moderação!', ephemeral: true });
     }
 
-    // 2. Moderação clicou em APAGAR ou MANTER
+    // 2. Moderação decide
     if (interaction.customId.startsWith('del_') || interaction.customId.startsWith('keep_')) {
-        // Verifica se quem clicou tem o cargo exigido
         if (!interaction.member.roles.cache.has(ROLES.MODERATOR)) {
-            return interaction.reply({ content: '❌ Apenas moderadores podem usar este botão.', ephemeral: true });
+            return interaction.reply({ content: '❌ Você não tem o cargo necessário para moderar denúncias.', ephemeral: true });
         }
 
-        const args = interaction.customId.split('_');
-        const action = args[0];
-        const targetChannelId = args[1];
-        const targetMessageId = args[2];
+        const [action, targetChannelId, targetMessageId] = interaction.customId.split('_');
 
         if (action === 'del') {
             try {
                 const targetChannel = await client.channels.fetch(targetChannelId);
                 const targetMessage = await targetChannel.messages.fetch(targetMessageId);
-                
-                // Apaga a embed denunciada no canal público
                 await targetMessage.delete();
 
-                // Atualiza a embed de denúncia na moderação, removendo os botões
                 await interaction.update({ 
-                    content: `✅ O conteúdo foi **apagado** pelo moderador ${interaction.user}.`, 
+                    content: `✅ O conteúdo do Container foi **apagado** por ${interaction.user}.`, 
                     components: [] 
                 });
             } catch (error) {
-                console.error('Erro ao apagar mensagem:', error);
                 await interaction.update({ 
-                    content: `⚠️ Não foi possível apagar a mensagem (pode já ter sido apagada). Ação registrada por ${interaction.user}.`, 
+                    content: `⚠️ A mensagem já foi apagada ou não existe mais. (Ação por ${interaction.user})`, 
                     components: [] 
                 });
             }
-        }
-
-        if (action === 'keep') {
-            // Remove os botões e avisa que foi mantido
+        } else if (action === 'keep') {
             await interaction.update({ 
-                content: `🛡️ O conteúdo foi **mantido** pelo moderador ${interaction.user}. Nenhuma ação tomada.`, 
+                content: `🛡️ O moderador ${interaction.user} decidiu **manter** o conteúdo.`, 
                 components: [] 
             });
         }
@@ -260,7 +289,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
 client.once(Events.ClientReady, () => {
     console.log(`🚀 Bot conectado como ${client.user.tag}!`);
-    console.log(`💾 Sistema de Banco de Dados ativo. Aguardando atualizações...`);
+    console.log(`💾 Banco de Dados pronto. Usando Components V2 para notificações.`);
 });
 
 client.on(Events.UserUpdate, async (oldUser, newUser) => {
@@ -274,14 +303,12 @@ client.on(Events.GuildMemberAdd, async (member) => {
             const user = await client.users.fetch(member.id, { force: true });
             insertUserStmt.run(user.id, user.username, user.globalName || user.displayName, user.avatar, user.banner);
         }
-    } catch (err) {
-        // Ignorar erros silenciosos de fetch
-    }
+    } catch (err) {}
 });
 
 const token = process.env.DISCORD_BOT_TOKEN;
 if (!token) {
-    console.error('DISCORD_BOT_TOKEN não encontrado nas variáveis de ambiente!');
+    console.error('DISCORD_BOT_TOKEN não encontrado!');
     process.exit(1);
 }
 
