@@ -226,12 +226,12 @@ client.on(Events.InteractionCreate, async interaction => {
                 { label: 'Outro Motivo', value: 'Outro', description: 'Não listado nas opções acima' }
             );
 
-        // Cria a caixa de texto para mais detalhes (Que serve como AVISO)
+                // Cria a caixa de texto para mais detalhes (Que serve como AVISO)
         const detailsInput = new TextInputBuilder()
             .setCustomId('report_details')
             .setLabel('⚠️ FALSAS DENÚNCIAS RESULTAM EM BANIMENTO!')
             .setStyle(TextInputStyle.Paragraph)
-            .setPlaceholder('Tem algo a acrescentar? (Opcional). Esteja ciente de que o uso indevido deste botão resultará em punição severa.')
+            .setPlaceholder('Detalhes (opcional). O uso indevido deste botão resultará em punição!') // Encurtado para caber no limite de 100 caracteres
             .setRequired(false)
             .setMaxLength(300);
 
