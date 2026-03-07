@@ -109,10 +109,10 @@ async function sendNotification(channelId, user, changeType, oldValue, newValue)
                 flags: MessageFlags.IsComponentsV2,
                 components: [container] 
             });
-            console.log(`✅ Notificação enviada: ${changeType} para ${user.tag}`);
+            console.log(`Notificacao enviada: ${changeType} para ${user.tag}`);
         }
     } catch (error) {
-        console.error(`❌ Erro ao enviar notificação de ${changeType} para ${user.tag}:`, error.message);
+        console.error(`Erro ao enviar notificacao de ${changeType} para ${user.tag}:`, error.message);
     }
 }
 
@@ -123,7 +123,7 @@ async function sendTextNotification(channelId, user, type, oldText) {
             const container = new ContainerBuilder()
                 .setAccentColor(0x9c41ff)
                 .addTextDisplayComponents(
-                    new TextDisplayBuilder().setContent(`${type} disponível: \`${oldText}\``)
+                    new TextDisplayBuilder().setContent(`${type} disponivel: \`${oldText}\``)
                 )
                 .addActionRowComponents(getReportActionRow());
 
@@ -131,10 +131,10 @@ async function sendTextNotification(channelId, user, type, oldText) {
                 flags: MessageFlags.IsComponentsV2,
                 components: [container] 
             });
-            console.log(`✅ Notificação enviada: ${type} para ${user.tag}`);
+            console.log(`Notificacao enviada: ${type} para ${user.tag}`);
         }
     } catch (error) {
-        console.error(`❌ Erro ao enviar notificação de ${type} para ${user.tag}:`, error.message);
+        console.error(`Erro ao enviar notificacao de ${type} para ${user.tag}:`, error.message);
     }
 }
 
@@ -195,7 +195,7 @@ async function processUserChange(userId) {
         }
 
     } catch (error) {
-        console.error(`Erro ao processar mudanças para o ID ${userId}:`, error.message);
+        console.error(`Erro ao processar mudancas para o ID ${userId}:`, error.message);
     }
 }
 
@@ -212,8 +212,8 @@ client.on(Events.InteractionCreate, async interaction => {
             if (now < expirationTime) {
                 const timeLeft = ((expirationTime - now) / 1000).toFixed(0);
                 return interaction.reply({ 
-                    content: `⏳ Você está em cooldown. Aguarde **${timeLeft} segundos** antes de reportar novamente.`, 
-                    flags: MessageFlags.Ephemeral // Correção do Warning!
+                    content: `Voce esta em cooldown. Aguarde **${timeLeft} segundos** antes de reportar novamente.`, 
+                    flags: MessageFlags.Ephemeral 
                 });
             }
         }
@@ -227,30 +227,30 @@ client.on(Events.InteractionCreate, async interaction => {
             components: [
                 {
                     type: 18, 
-                    label: 'Qual o motivo da denúncia?',
+                    label: 'Qual o motivo da denuncia?',
                     component: {
                         type: 3, 
                         custom_id: 'report_reason',
-                        placeholder: 'Escolha uma opção...',
+                        placeholder: 'Escolha uma opcao...',
                         options: [
-                            { label: 'Conteúdo Explícito (NSFW)', value: 'NSFW', description: 'Nudez ou pornografia' },
-                            { label: 'Gore / Violência Extrema', value: 'Gore', description: 'Sangue ou imagens chocantes' },
-                            { label: 'Assédio / Discurso de Ódio', value: 'Assédio', description: 'Ofensas, racismo, etc.' },
-                            { label: 'Conteúdo Ilegal', value: 'Ilegal', description: 'Drogas, apologia a crimes' },
-                            { label: 'Outro Motivo', value: 'Outro', description: 'Não se enquadra nas anteriores' }
+                            { label: 'Conteudo Explicito (NSFW)', value: 'NSFW', description: 'Nudez ou pornografia' },
+                            { label: 'Gore / Violencia Extrema', value: 'Gore', description: 'Sangue ou imagens chocantes' },
+                            { label: 'Assedio / Discurso de Odio', value: 'Assedio', description: 'Ofensas, racismo, etc.' },
+                            { label: 'Conteudo Ilegal', value: 'Ilegal', description: 'Drogas, apologia a crimes' },
+                            { label: 'Outro Motivo', value: 'Outro', description: 'Nao se enquadra nas anteriores' }
                         ]
                     }
                 },
                 {
                     type: 18, 
-                    label: '⚠️ FALSAS DENÚNCIAS = BANIMENTO!',
+                    label: 'FALSAS DENUNCIAS RESULTARAO EM BANIMENTO',
                     description: 'Tem algo a acrescentar? (Opcional)',
                     component: {
                         type: 4, 
                         custom_id: 'report_details',
                         style: 2, 
                         max_length: 300,
-                        placeholder: 'Escreva detalhes adicionais. O uso indevido resultará em punição!',
+                        placeholder: 'Escreva detalhes adicionais. O uso indevido resultara em punicao.',
                         required: false
                     }
                 }
@@ -261,7 +261,7 @@ client.on(Events.InteractionCreate, async interaction => {
         return;
     }
 
-    // 2. ENVIO DO MODAL DE DENÚNCIA
+    // 2. ENVIO DO MODAL DE DENÚNCIA (CRIAR CONTAINER V2 NA STAFF)
     if (interaction.isModalSubmit()) {
         if (interaction.customId.startsWith('modal_submit_report_')) {
             const args = interaction.customId.split('_');
@@ -271,19 +271,19 @@ client.on(Events.InteractionCreate, async interaction => {
             const reportChannel = client.channels.cache.get(CHANNELS.REPORT_CHANNEL);
             if (!reportChannel) {
                 return interaction.reply({ 
-                    content: '❌ Canal de denúncias não configurado.', 
-                    flags: MessageFlags.Ephemeral // Correção do Warning!
+                    content: 'Canal de denuncias nao configurado.', 
+                    flags: MessageFlags.Ephemeral 
                 });
             }
 
             const reasonField = interaction.fields.fields.get('report_reason');
-            const selectedReason = reasonField?.values ? reasonField.values[0] : 'Não especificado';
+            const selectedReason = reasonField?.values ? reasonField.values[0] : 'Nao especificado';
 
             const detailsField = interaction.fields.fields.get('report_details');
             const extraDetails = detailsField?.value || 'Nenhum detalhe adicional';
 
             let reportedMessage;
-            let contentReported = 'Conteúdo desconhecido';
+            let contentReported = 'Conteudo desconhecido';
             
             try {
                 const targetChannel = await client.channels.fetch(targetChannelId);
@@ -295,53 +295,78 @@ client.on(Events.InteractionCreate, async interaction => {
                         for (const sub of containerData.components) {
                             if (sub.type === ComponentType.MediaGallery) {
                                 contentReported = sub.items?.[0]?.media?.url || 'Imagem na galeria';
-                            } else if (sub.type === ComponentType.TextDisplay && contentReported === 'Conteúdo desconhecido') {
+                            } else if (sub.type === ComponentType.TextDisplay && contentReported === 'Conteudo desconhecido') {
                                 contentReported = sub.content;
                             }
                         }
                     }
                 } else {
-                    contentReported = reportedMessage.embeds[0]?.image?.url || reportedMessage.embeds[0]?.description || 'Conteúdo antigo';
+                    contentReported = reportedMessage.embeds[0]?.image?.url || reportedMessage.embeds[0]?.description || 'Conteudo antigo';
                 }
             } catch (err) {
                 console.error('Erro ao buscar a mensagem reportada:', err);
                 return interaction.reply({ 
-                    content: '⚠️ Não foi possível localizar a mensagem original. Ela pode já ter sido apagada.', 
+                    content: 'Nao foi possivel localizar a mensagem original. Ela pode ja ter sido apagada.', 
                     flags: MessageFlags.Ephemeral 
                 });
             }
 
-            const reportEmbed = {
-                color: 0xff0000,
-                title: '🚨 Nova Denúncia Registrada',
-                description: `**Denunciante:** ${interaction.user} (${interaction.user.id})\n**Canal:** <#${targetChannelId}>\n**Mensagem Original:** [Ir para a Mensagem](${reportedMessage.url})`,
-                fields: [
-                    { name: 'Motivo', value: selectedReason, inline: true },
-                    { name: 'Detalhes Adicionais', value: extraDetails, inline: true },
-                    { name: 'Conteúdo Infrator', value: contentReported.length > 1024 ? contentReported.substring(0, 1021) + '...' : contentReported, inline: false }
-                ],
-                timestamp: new Date().toISOString()
-            };
+            // --- CRIANDO A DENÚNCIA EM FORMATO COMPONENTS V2 ---
+            const reportContainer = new ContainerBuilder()
+                .setAccentColor(0xff0000)
+                .addTextDisplayComponents(
+                    new TextDisplayBuilder().setContent(
+                        `**NOVA DENUNCIA REGISTRADA**\n\n` +
+                        `**Denunciante:** ${interaction.user} (${interaction.user.id})\n` +
+                        `**Canal:** <#${targetChannelId}>\n` +
+                        `**Mensagem Original:** [Acessar a mensagem](${reportedMessage ? reportedMessage.url : '#'})\n\n` +
+                        `**Motivo Selecionado:** ${selectedReason}\n` +
+                        `**Detalhes:** ${extraDetails}\n\n` +
+                        `**Conteudo Infrator Abaixo:** || ${contentReported} ||`
+                    )
+                );
 
+            // Adiciona a imagem, se houver
+            if (contentReported.startsWith('http')) {
+                reportContainer.addMediaGalleryComponents(
+                    new MediaGalleryBuilder().addItems(
+                        new MediaGalleryItemBuilder().setURL(contentReported)
+                    )
+                );
+            }
+
+            // Adiciona os botões DENTRO do contêiner da denúncia
             const modActionRow = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
                     .setCustomId(`del_${targetChannelId}_${targetMessageId}`)
-                    .setLabel('Apagar conteúdo')
+                    .setLabel('Apagar conteudo')
                     .setStyle(ButtonStyle.Danger),
                 new ButtonBuilder()
                     .setCustomId(`keep_${targetChannelId}_${targetMessageId}`)
-                    .setLabel('Manter conteúdo')
+                    .setLabel('Manter conteudo')
                     .setStyle(ButtonStyle.Secondary)
             );
 
+            reportContainer.addActionRowComponents(modActionRow);
+
+            // Hack: Converte para JSON para forçar a tag "spoiler: true" nativa nas imagens da galeria
+            const rawReportContainer = reportContainer.toJSON();
+            if (rawReportContainer.components) {
+                rawReportContainer.components.forEach(comp => {
+                    if (comp.type === ComponentType.MediaGallery && comp.items) {
+                        comp.items.forEach(item => item.spoiler = true);
+                    }
+                });
+            }
+
             await reportChannel.send({
                 content: `<@&${ROLES.MODERATOR}>`, 
-                embeds: [reportEmbed],
-                components: [modActionRow]
+                flags: MessageFlags.IsComponentsV2,
+                components: [rawReportContainer] // Enviamos o JSON com spoiler ativado e botoes embutidos
             });
 
             return interaction.reply({ 
-                content: '✅ Sua denúncia foi enviada à equipe de moderação. Agradecemos sua ajuda!', 
+                content: 'Sua denuncia foi enviada a equipe de moderacao com sucesso.', 
                 flags: MessageFlags.Ephemeral 
             });
         }
@@ -351,7 +376,7 @@ client.on(Events.InteractionCreate, async interaction => {
     if (interaction.isButton() && (interaction.customId.startsWith('del_') || interaction.customId.startsWith('keep_'))) {
         if (!interaction.member.roles.cache.has(ROLES.MODERATOR)) {
             return interaction.reply({ 
-                content: '❌ Acesso negado. Apenas moderadores.', 
+                content: 'Acesso negado. Apenas moderadores.', 
                 flags: MessageFlags.Ephemeral 
             });
         }
@@ -365,18 +390,18 @@ client.on(Events.InteractionCreate, async interaction => {
                 await targetMessage.delete();
 
                 await interaction.update({ 
-                    content: ` O conteúdo foi **apagado** por ${interaction.user}.`, 
+                    content: `O conteudo infrator foi apagado por ${interaction.user}.`, 
                     components: [] 
                 });
             } catch (error) {
                 await interaction.update({ 
-                    content: ` A mensagem já não existe mais no canal. (Ação registrada por ${interaction.user})`, 
+                    content: `A mensagem ja nao existe mais no canal. Acao registrada por ${interaction.user}.`, 
                     components: [] 
                 });
             }
         } else if (action === 'keep') {
             await interaction.update({ 
-                content: ` O moderador ${interaction.user} decidiu **manter** o conteúdo.`, 
+                content: `O moderador ${interaction.user} decidiu manter o conteudo.`, 
                 components: [] 
             });
         }
@@ -384,8 +409,8 @@ client.on(Events.InteractionCreate, async interaction => {
 });
 
 client.once(Events.ClientReady, () => {
-    console.log(`🚀 Bot conectado como ${client.user.tag}!`);
-    console.log(`💾 Banco de Dados pronto. Hack de Modals Type 18 ativado com sucesso!`);
+    console.log(`Bot conectado como ${client.user.tag}.`);
+    console.log(`Sistema de Banco de Dados e Denuncias V2 ativo.`);
 });
 
 client.on(Events.UserUpdate, async (oldUser, newUser) => {
@@ -404,7 +429,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
 
 const token = process.env.DISCORD_BOT_TOKEN;
 if (!token) {
-    console.error('DISCORD_BOT_TOKEN não encontrado nas variáveis de ambiente!');
+    console.error('DISCORD_BOT_TOKEN nao encontrado nas variaveis de ambiente.');
     process.exit(1);
 }
 
