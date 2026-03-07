@@ -67,14 +67,17 @@ async function sendNotification(channelId, user, changeType, oldValue, newValue)
     try {
         const channel = await client.channels.fetch(channelId);
         if (channel) {
-            // 1. Cria o contêiner principal (antiga embed)
+            // Define se é Avatar ou Banner para o texto ficar limpo
+            const typeName = changeType.includes('Avatar') ? 'Avatar' : 'Banner';
+
+            // 1. Cria o contêiner com o título simples: Avatar de `username`
             const container = new ContainerBuilder()
                 .setAccentColor(0x9c41ff)
                 .addTextDisplayComponents(
-                    new TextDisplayBuilder().setContent(`**Notificação de ${changeType}**\nGIFZADA - ${user.username} (${user.id})`)
+                    new TextDisplayBuilder().setContent(`${typeName} de \`${user.username}\``)
                 );
 
-            // 2. Adiciona a imagem usando MediaGallery se for Avatar ou Banner
+            // 2. Adiciona a imagem usando MediaGallery
             if ((changeType.includes('Banner') || changeType.includes('Avatar')) && newValue !== 'None') {
                 container.addMediaGalleryComponents(
                     new MediaGalleryBuilder().addItems(
@@ -83,15 +86,15 @@ async function sendNotification(channelId, user, changeType, oldValue, newValue)
                 );
             }
 
-            // 3. Adiciona o botão DENTRO do contêiner!
+            // 3. Adiciona o botão de Reportar
             container.addActionRowComponents(getReportActionRow());
 
-            // 4. Envia com a flag obrigatória do V2
+            // 4. Envia
             await channel.send({ 
                 flags: MessageFlags.IsComponentsV2,
                 components: [container] 
             });
-            console.log(`✅ ${changeType} notification sent for ${user.tag} (V2 Container)`);
+            console.log(`✅ ${changeType} notification sent for ${user.tag}`);
         }
     } catch (error) {
         console.error(`❌ Failed to send ${changeType} notification for ${user.tag}:`, error.message);
@@ -102,10 +105,11 @@ async function sendTextNotification(channelId, user, type, oldText) {
     try {
         const channel = await client.channels.fetch(channelId);
         if (channel && oldText) {
+            // Remove o rodapé GIFZADA daqui também para manter o visual minimalista
             const container = new ContainerBuilder()
                 .setAccentColor(0x9c41ff)
                 .addTextDisplayComponents(
-                    new TextDisplayBuilder().setContent(`${type} disponível: \`${oldText}\`\nGIFZADA - ${user.username} (${user.id})`)
+                    new TextDisplayBuilder().setContent(`${type} disponível: \`${oldText}\``)
                 )
                 .addActionRowComponents(getReportActionRow());
 
@@ -113,7 +117,7 @@ async function sendTextNotification(channelId, user, type, oldText) {
                 flags: MessageFlags.IsComponentsV2,
                 components: [container] 
             });
-            console.log(`✅ ${type} notification sent for ${user.tag} (V2 Container)`);
+            console.log(`✅ ${type} notification sent for ${user.tag}`);
         }
     } catch (error) {
         console.error(`❌ Failed to send ${type} notification for ${user.tag}:`, error.message);
@@ -189,7 +193,6 @@ async function processUserChange(userId) {
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isButton()) return;
 
-    // 1. Usuário clicou no botão REPORTAR do Container V2
     if (interaction.customId === 'btn_report') {
         const reportChannel = client.channels.cache.get(CHANNELS.REPORT_CHANNEL);
         if (!reportChannel) {
@@ -200,7 +203,6 @@ client.on(Events.InteractionCreate, async interaction => {
         let contentReported = 'Conteúdo desconhecido';
 
         try {
-            // Lendo dados de um Container V2 para pegar a imagem ou texto da denúncia
             if (reportedMessage.flags.has(MessageFlags.IsComponentsV2)) {
                 const containerData = reportedMessage.components[0]?.toJSON();
                 if (containerData && containerData.components) {
@@ -213,21 +215,19 @@ client.on(Events.InteractionCreate, async interaction => {
                     }
                 }
             } else {
-                // Fallback caso seja uma mensagem antiga
                 contentReported = reportedMessage.embeds[0]?.image?.url || reportedMessage.embeds[0]?.description || 'Conteúdo antigo';
             }
         } catch (err) {
-            console.error('Erro ao tentar ler o V2 container para o reporte:', err);
+            console.error('Erro ao ler V2 para o reporte:', err);
         }
 
-        // A denúncia que vai para a moderação ainda pode ser enviada como Embed clássica ou V2 (aqui mantive Clássica por simplicidade)
         const reportEmbed = {
             color: 0xff0000,
             title: '🚨 Nova Denúncia Registrada',
             description: `**Denunciante:** ${interaction.user} (${interaction.user.id})\n**Canal:** <#${interaction.channel.id}>\n**Mensagem Original:** [Acessar a mensagem](${reportedMessage.url})`,
             fields: [
                 {
-                    name: 'Informação extraída',
+                    name: 'Conteúdo denunciado',
                     value: contentReported.length > 1024 ? contentReported.substring(0, 1021) + '...' : contentReported
                 }
             ],
@@ -254,7 +254,6 @@ client.on(Events.InteractionCreate, async interaction => {
         return interaction.reply({ content: '✅ Sua denúncia foi enviada à moderação!', ephemeral: true });
     }
 
-    // 2. Moderação decide
     if (interaction.customId.startsWith('del_') || interaction.customId.startsWith('keep_')) {
         if (!interaction.member.roles.cache.has(ROLES.MODERATOR)) {
             return interaction.reply({ content: '❌ Você não tem o cargo necessário para moderar denúncias.', ephemeral: true });
@@ -269,7 +268,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 await targetMessage.delete();
 
                 await interaction.update({ 
-                    content: `✅ O conteúdo do Container foi **apagado** por ${interaction.user}.`, 
+                    content: ` O conteúdo foi **apagado** por ${interaction.user}.`, 
                     components: [] 
                 });
             } catch (error) {
@@ -280,7 +279,7 @@ client.on(Events.InteractionCreate, async interaction => {
             }
         } else if (action === 'keep') {
             await interaction.update({ 
-                content: `🛡️ O moderador ${interaction.user} decidiu **manter** o conteúdo.`, 
+                content: ` O moderador ${interaction.user} decidiu **manter** o conteúdo.`, 
                 components: [] 
             });
         }
@@ -289,7 +288,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
 client.once(Events.ClientReady, () => {
     console.log(`🚀 Bot conectado como ${client.user.tag}!`);
-    console.log(`💾 Banco de Dados pronto. Usando Components V2 para notificações.`);
+    console.log(`💾 Banco de Dados pronto. Notificações limpas (V2) ativadas.`);
 });
 
 client.on(Events.UserUpdate, async (oldUser, newUser) => {
