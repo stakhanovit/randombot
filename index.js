@@ -374,7 +374,7 @@ client.on(Events.InteractionCreate, async interaction => {
         }
     }
 
-    // 3. DECISÃO DA MODERAÇÃO (APAGAR OU MANTER)
+        // 3. DECISÃO DA MODERAÇÃO (APAGAR OU MANTER)
     if (interaction.isButton() && (interaction.customId.startsWith('del_') || interaction.customId.startsWith('keep_'))) {
         if (!interaction.member.roles.cache.has(ROLES.MODERATOR)) {
             return interaction.reply({ 
@@ -384,6 +384,9 @@ client.on(Events.InteractionCreate, async interaction => {
         }
 
         const [action, targetChannelId, targetMessageId] = interaction.customId.split('_');
+        
+        let resultText = '';
+        let resultColor = 0x5865f2; // Cor padrão
 
         if (action === 'del') {
             try {
@@ -391,24 +394,31 @@ client.on(Events.InteractionCreate, async interaction => {
                 const targetMessage = await targetChannel.messages.fetch(targetMessageId);
                 await targetMessage.delete();
 
-                await interaction.update({ 
-                    content: `O conteudo infrator foi apagado por ${interaction.user}.`, 
-                    components: [] 
-                });
+                resultText = ` O conteudo infrator foi apagado por ${interaction.user}.`;
+                resultColor = 0x00ff00; // Verde
             } catch (error) {
-                await interaction.update({ 
-                    content: `A mensagem ja nao existe mais no canal. Acao registrada por ${interaction.user}.`, 
-                    components: [] 
-                });
+                resultText = ` A mensagem ja nao existe mais no canal. Acao registrada por ${interaction.user}.`;
+                resultColor = 0xffaa00; // Laranja
             }
         } else if (action === 'keep') {
-            await interaction.update({ 
-                content: `O moderador ${interaction.user} decidiu manter o conteudo.`, 
-                components: [] 
-            });
+            resultText = ` O moderador ${interaction.user} decidiu manter o conteudo.`;
+            resultColor = 0x5865f2; // Azul Discord
         }
+
+        // Cria o contêiner de "Resolvido" para substituir a denúncia V2 antiga
+        const resolvedContainer = new ContainerBuilder()
+            .setAccentColor(resultColor)
+            .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(resultText)
+            );
+
+        // Atualiza a mensagem substituindo o contêiner antigo por esse novo (sem botões)
+        await interaction.update({ 
+            flags: MessageFlags.IsComponentsV2,
+            components: [resolvedContainer] 
+        });
     }
-});
+
 
 client.once(Events.ClientReady, () => {
     console.log(`Bot conectado como ${client.user.tag}.`);
