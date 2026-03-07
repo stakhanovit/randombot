@@ -68,14 +68,11 @@ const getReportActionRow = () => {
 // HACK PARA CORRIGIR O CRASH DO DISCORD.JS COM O TYPE 18
 // ----------------------------------------------------
 client.on('raw', packet => {
-    // Se o pacote for um Envio de Modal (MODAL_SUBMIT = 5)
     if (packet.t === 'INTERACTION_CREATE' && packet.d.type === 5) {
         const data = packet.d.data;
         if (data && data.components) {
             data.components.forEach(comp => {
-                // Se for o novo Form Item do Discord e o discord.js estiver esperando a array...
                 if (comp.type === 18 && comp.component && !comp.components) {
-                    // Nós injetamos a array para enganar o discord.js e evitar o erro do "forEach"
                     comp.components = [comp.component]; 
                 }
             });
@@ -216,7 +213,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 const timeLeft = ((expirationTime - now) / 1000).toFixed(0);
                 return interaction.reply({ 
                     content: `⏳ Você está em cooldown. Aguarde **${timeLeft} segundos** antes de reportar novamente.`, 
-                    ephemeral: true 
+                    flags: MessageFlags.Ephemeral // Correção do Warning!
                 });
             }
         }
@@ -224,7 +221,6 @@ client.on(Events.InteractionCreate, async interaction => {
         reportCooldowns.set(interaction.user.id, now);
         const reportedMessage = interaction.message;
 
-        // Construindo o JSON exato da documentação que você encontrou!
         const rawModal = {
             title: 'Denunciar Imagem/GIF',
             custom_id: `modal_submit_report_${interaction.channel.id}_${reportedMessage.id}`,
@@ -274,11 +270,12 @@ client.on(Events.InteractionCreate, async interaction => {
 
             const reportChannel = client.channels.cache.get(CHANNELS.REPORT_CHANNEL);
             if (!reportChannel) {
-                return interaction.reply({ content: '❌ Canal de denúncias não configurado.', ephemeral: true });
+                return interaction.reply({ 
+                    content: '❌ Canal de denúncias não configurado.', 
+                    flags: MessageFlags.Ephemeral // Correção do Warning!
+                });
             }
 
-            // Graças ao nosso hack do "raw", o discord.js leu os campos com sucesso!
-            // Agora podemos puxar os valores diretamente:
             const reasonField = interaction.fields.fields.get('report_reason');
             const selectedReason = reasonField?.values ? reasonField.values[0] : 'Não especificado';
 
@@ -308,7 +305,10 @@ client.on(Events.InteractionCreate, async interaction => {
                 }
             } catch (err) {
                 console.error('Erro ao buscar a mensagem reportada:', err);
-                return interaction.reply({ content: '⚠️ Não foi possível localizar a mensagem original. Ela pode já ter sido apagada.', ephemeral: true });
+                return interaction.reply({ 
+                    content: '⚠️ Não foi possível localizar a mensagem original. Ela pode já ter sido apagada.', 
+                    flags: MessageFlags.Ephemeral 
+                });
             }
 
             const reportEmbed = {
@@ -340,14 +340,20 @@ client.on(Events.InteractionCreate, async interaction => {
                 components: [modActionRow]
             });
 
-            return interaction.reply({ content: '✅ Sua denúncia foi enviada à equipe de moderação. Agradecemos sua ajuda!', ephemeral: true });
+            return interaction.reply({ 
+                content: '✅ Sua denúncia foi enviada à equipe de moderação. Agradecemos sua ajuda!', 
+                flags: MessageFlags.Ephemeral 
+            });
         }
     }
 
     // 3. DECISÃO DA MODERAÇÃO (APAGAR OU MANTER)
     if (interaction.isButton() && (interaction.customId.startsWith('del_') || interaction.customId.startsWith('keep_'))) {
         if (!interaction.member.roles.cache.has(ROLES.MODERATOR)) {
-            return interaction.reply({ content: '❌ Acesso negado. Apenas moderadores.', ephemeral: true });
+            return interaction.reply({ 
+                content: '❌ Acesso negado. Apenas moderadores.', 
+                flags: MessageFlags.Ephemeral 
+            });
         }
 
         const [action, targetChannelId, targetMessageId] = interaction.customId.split('_');
