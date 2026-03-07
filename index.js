@@ -1,7 +1,7 @@
 const { 
     Client, GatewayIntentBits, Events, ActionRowBuilder, ButtonBuilder, ButtonStyle,
     MessageFlags, ContainerBuilder, TextDisplayBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder,
-    ComponentType
+    ComponentType, Collection // <-- Adicionado Collection aqui
 } = require('discord.js');
 const Database = require('better-sqlite3');
 
@@ -19,7 +19,7 @@ db.prepare(`
     )
 `).run();
 
-// Comandos de banco de dados preparados
+// Comandos de banco de dados
 const getUserStmt = db.prepare('SELECT * FROM users WHERE id = ?');
 const insertUserStmt = db.prepare('INSERT INTO users (id, username, display_name, avatar, banner) VALUES (?, ?, ?, ?, ?)');
 const updateUserStmt = db.prepare('UPDATE users SET username = ?, display_name = ?, avatar = ?, banner = ? WHERE id = ?');
@@ -45,6 +45,10 @@ const ROLES = {
     MODERATOR: '1165308513355046973'
 };
 
+// --- SISTEMA DE COOLDOWN ---
+const reportCooldowns = new Collection();
+const COOLDOWN_AMOUNT = 60 * 1000; // 60 segundos (ajuste como preferir)
+
 function isGif(url) {
     return url && (url.includes('.gif') || url.includes('a_'));
 }
@@ -67,17 +71,14 @@ async function sendNotification(channelId, user, changeType, oldValue, newValue)
     try {
         const channel = await client.channels.fetch(channelId);
         if (channel) {
-            // Define se é Avatar ou Banner para o texto ficar limpo
             const typeName = changeType.includes('Avatar') ? 'Avatar' : 'Banner';
 
-            // 1. Cria o contêiner com o título simples: Avatar de `username`
             const container = new ContainerBuilder()
                 .setAccentColor(0x9c41ff)
                 .addTextDisplayComponents(
                     new TextDisplayBuilder().setContent(`${typeName} de \`${user.username}\``)
                 );
 
-            // 2. Adiciona a imagem usando MediaGallery
             if ((changeType.includes('Banner') || changeType.includes('Avatar')) && newValue !== 'None') {
                 container.addMediaGalleryComponents(
                     new MediaGalleryBuilder().addItems(
@@ -86,10 +87,8 @@ async function sendNotification(channelId, user, changeType, oldValue, newValue)
                 );
             }
 
-            // 3. Adiciona o botão de Reportar
             container.addActionRowComponents(getReportActionRow());
 
-            // 4. Envia
             await channel.send({ 
                 flags: MessageFlags.IsComponentsV2,
                 components: [container] 
@@ -105,7 +104,6 @@ async function sendTextNotification(channelId, user, type, oldText) {
     try {
         const channel = await client.channels.fetch(channelId);
         if (channel && oldText) {
-            // Remove o rodapé GIFZADA daqui também para manter o visual minimalista
             const container = new ContainerBuilder()
                 .setAccentColor(0x9c41ff)
                 .addTextDisplayComponents(
@@ -194,6 +192,26 @@ client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isButton()) return;
 
     if (interaction.customId === 'btn_report') {
+        
+        // --- VERIFICAÇÃO DE COOLDOWN ---
+        const now = Date.now();
+        if (reportCooldowns.has(interaction.user.id)) {
+            const expirationTime = reportCooldowns.get(interaction.user.id) + COOLDOWN_AMOUNT;
+
+            // Se o tempo ainda não passou, avisa o usuário
+            if (now < expirationTime) {
+                const timeLeft = ((expirationTime - now) / 1000).toFixed(0);
+                return interaction.reply({ 
+                    content: `⏳ Calma lá! Você está em cooldown. Tente reportar novamente em **${timeLeft} segundos**.`, 
+                    ephemeral: true 
+                });
+            }
+        }
+        
+        // Se não estava no cooldown ou já passou, registra o novo tempo dele
+        reportCooldowns.set(interaction.user.id, now);
+        // --------------------------------
+
         const reportChannel = client.channels.cache.get(CHANNELS.REPORT_CHANNEL);
         if (!reportChannel) {
             return interaction.reply({ content: '❌ Canal de denúncias não encontrado!', ephemeral: true });
@@ -273,7 +291,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 });
             } catch (error) {
                 await interaction.update({ 
-                    content: `⚠️ A mensagem já foi apagada ou não existe mais. (Ação por ${interaction.user})`, 
+                    content: ` A mensagem já foi apagada ou não existe mais. (Ação por ${interaction.user})`, 
                     components: [] 
                 });
             }
