@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Events } = require('discord.js');
+const { Client, GatewayIntentBits, Events, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const Database = require('better-sqlite3');
 
 // Inicia o banco de dados (ele cria o arquivo database.sqlite automaticamente)
@@ -33,12 +33,27 @@ const CHANNELS = {
     GIF_AVATAR: '1445884170814361731',     
     BANNER_CHANGE: '1445884208970076321',
     USERNAME_CHANGE: '1478232755635617983',
-    NICKNAME_CHANGE: '1478232755635617983'   
+    NICKNAME_CHANGE: '1478232755635617983',
+    REPORT_CHANNEL: '1479649622149435486' // Canal de denúncias
+};
+
+const ROLES = {
+    MODERATOR: '1165308513355046973' // Cargo de moderação que pode aceitar/recusar denúncias
 };
 
 function isGif(url) {
     return url && (url.includes('.gif') || url.includes('a_'));
 }
+
+// Cria a fileira com o botão "Reportar" em vermelho
+const getReportActionRow = () => {
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId('btn_report')
+            .setLabel('Reportar')
+            .setStyle(ButtonStyle.Danger) // Botão Vermelho
+    );
+};
 
 async function sendNotification(channelId, user, changeType, oldValue, newValue) {
     try {
@@ -58,7 +73,8 @@ async function sendNotification(channelId, user, changeType, oldValue, newValue)
                 embed.image = { url: newValue };
             }
 
-            await channel.send({ embeds: [embed] });
+            // Envia a embed JUNTO com o componente do botão
+            await channel.send({ embeds: [embed], components: [getReportActionRow()] });
             console.log(`✅ ${changeType} notification sent for ${user.tag}`);
         }
     } catch (error) {
@@ -78,7 +94,9 @@ async function sendTextNotification(channelId, user, type, oldText) {
                     icon_url: channel.guild.iconURL({ size: 128 })
                 }
             };
-            await channel.send({ embeds: [embed] });
+            
+            // Envia a embed JUNTO com o componente do botão
+            await channel.send({ embeds: [embed], components: [getReportActionRow()] });
             console.log(`✅ ${type} notification sent for ${user.tag}: ${oldText} is now available`);
         }
     } catch (error) {
@@ -86,22 +104,16 @@ async function sendTextNotification(channelId, user, type, oldText) {
     }
 }
 
-// A função principal que analisa o usuário e compara com o Banco de Dados
 async function processUserChange(userId) {
     try {
-        // Puxamos o usuário fresco da API para garantir que temos o Banner
         const fullUser = await client.users.fetch(userId, { force: true });
-
-        // Buscamos o usuário no Banco de Dados
         const dbUser = getUserStmt.get(userId);
 
         const currentUsername = fullUser.username || null;
-        const currentDisplayName = fullUser.globalName || fullUser.displayName || null; // globalName é o Display Name oficial no v14
+        const currentDisplayName = fullUser.globalName || fullUser.displayName || null;
         const currentAvatar = fullUser.avatar || null;
         const currentBanner = fullUser.banner || null;
 
-        // Se o usuário não existe no DB, apenas salvamos ele para ter uma base de comparação futura.
-        // Não enviamos notificação porque não sabemos se ele "mudou" ou se o bot só conheceu ele agora.
         if (!dbUser) {
             insertUserStmt.run(userId, currentUsername, currentDisplayName, currentAvatar, currentBanner);
             return;
@@ -109,7 +121,6 @@ async function processUserChange(userId) {
 
         let hasChanges = false;
 
-        // 1. Checar Avatar
         if (dbUser.avatar !== currentAvatar) {
             hasChanges = true;
             if (currentAvatar) {
@@ -119,7 +130,6 @@ async function processUserChange(userId) {
             }
         }
 
-        // 2. Checar Banner
         if (dbUser.banner !== currentBanner) {
             hasChanges = true;
             if (currentBanner) {
@@ -129,7 +139,6 @@ async function processUserChange(userId) {
             }
         }
 
-        // 3. Checar Username
         if (dbUser.username !== currentUsername) {
             hasChanges = true;
             if (dbUser.username) {
@@ -137,7 +146,6 @@ async function processUserChange(userId) {
             }
         }
 
-        // 4. Checar Display Name
         if (dbUser.display_name !== currentDisplayName) {
             hasChanges = true;
             if (dbUser.display_name) {
@@ -145,7 +153,6 @@ async function processUserChange(userId) {
             }
         }
 
-        // Se houve alguma mudança, atualiza o Banco de Dados
         if (hasChanges) {
             updateUserStmt.run(currentUsername, currentDisplayName, currentAvatar, currentBanner, userId);
         }
@@ -155,17 +162,111 @@ async function processUserChange(userId) {
     }
 }
 
-client.once(Events.ClientReady, () => {
-    console.log(`🚀 Bot conectado como ${client.user.tag}!`);
-    console.log(`💾 Sistema de Banco de Dados ativo. Aguardando atualizações dos usuários...`);
+// Gerenciador de Interações (Cliques em Botões)
+client.on(Events.InteractionCreate, async interaction => {
+    if (!interaction.isButton()) return;
+
+    // 1. Usuário clicou em REPORTAR
+    if (interaction.customId === 'btn_report') {
+        const reportChannel = client.channels.cache.get(CHANNELS.REPORT_CHANNEL);
+        if (!reportChannel) {
+            return interaction.reply({ content: '❌ Canal de denúncias não encontrado!', ephemeral: true });
+        }
+
+        const reportedMessage = interaction.message;
+        const reportedEmbed = reportedMessage.embeds[0];
+        
+        // Pega a URL da imagem (se tiver) ou a descrição da embed
+        const contentReported = reportedEmbed?.image?.url || reportedEmbed?.description || 'Conteúdo desconhecido';
+
+        const reportEmbed = {
+            color: 0xff0000,
+            title: '🚨 Nova Denúncia Registrada',
+            description: `**Denunciante:** ${interaction.user} (${interaction.user.id})\n**Canal:** <#${interaction.channel.id}>\n**Mensagem Original:** [Ir para a mensagem](${reportedMessage.url})`,
+            fields: [
+                {
+                    name: 'Conteúdo denunciado',
+                    value: typeof contentReported === 'string' ? contentReported : 'Imagem inclusa na embed'
+                }
+            ],
+            timestamp: new Date().toISOString()
+        };
+
+        // Botões para a equipe de moderação avaliar
+        const modActionRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`del_${interaction.channel.id}_${reportedMessage.id}`)
+                .setLabel('Apagar conteúdo')
+                .setStyle(ButtonStyle.Danger),
+            new ButtonBuilder()
+                .setCustomId(`keep_${interaction.channel.id}_${reportedMessage.id}`)
+                .setLabel('Manter conteúdo')
+                .setStyle(ButtonStyle.Secondary)
+        );
+
+        // Envia a denúncia mencionando o cargo FORA da embed
+        await reportChannel.send({
+            content: `<@&${ROLES.MODERATOR}>`, 
+            embeds: [reportEmbed],
+            components: [modActionRow]
+        });
+
+        return interaction.reply({ content: '✅ A denúncia foi enviada com sucesso aos moderadores.', ephemeral: true });
+    }
+
+    // 2. Moderação clicou em APAGAR ou MANTER
+    if (interaction.customId.startsWith('del_') || interaction.customId.startsWith('keep_')) {
+        // Verifica se quem clicou tem o cargo exigido
+        if (!interaction.member.roles.cache.has(ROLES.MODERATOR)) {
+            return interaction.reply({ content: '❌ Apenas moderadores podem usar este botão.', ephemeral: true });
+        }
+
+        const args = interaction.customId.split('_');
+        const action = args[0];
+        const targetChannelId = args[1];
+        const targetMessageId = args[2];
+
+        if (action === 'del') {
+            try {
+                const targetChannel = await client.channels.fetch(targetChannelId);
+                const targetMessage = await targetChannel.messages.fetch(targetMessageId);
+                
+                // Apaga a embed denunciada no canal público
+                await targetMessage.delete();
+
+                // Atualiza a embed de denúncia na moderação, removendo os botões
+                await interaction.update({ 
+                    content: `✅ O conteúdo foi **apagado** pelo moderador ${interaction.user}.`, 
+                    components: [] 
+                });
+            } catch (error) {
+                console.error('Erro ao apagar mensagem:', error);
+                await interaction.update({ 
+                    content: `⚠️ Não foi possível apagar a mensagem (pode já ter sido apagada). Ação registrada por ${interaction.user}.`, 
+                    components: [] 
+                });
+            }
+        }
+
+        if (action === 'keep') {
+            // Remove os botões e avisa que foi mantido
+            await interaction.update({ 
+                content: `🛡️ O conteúdo foi **mantido** pelo moderador ${interaction.user}. Nenhuma ação tomada.`, 
+                components: [] 
+            });
+        }
+    }
 });
 
-// Eventos que o Discord envia quando um usuário faz alterações no perfil global
+client.once(Events.ClientReady, () => {
+    console.log(`🚀 Bot conectado como ${client.user.tag}!`);
+    console.log(`💾 Sistema de Banco de Dados ativo. Aguardando atualizações...`);
+});
+
 client.on(Events.UserUpdate, async (oldUser, newUser) => {
     await processUserChange(newUser.id);
 });
 
-// Evento quando alguém entra no servidor: apenas guardamos no DB silenciosamente
 client.on(Events.GuildMemberAdd, async (member) => {
     try {
         const dbUser = getUserStmt.get(member.id);
