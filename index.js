@@ -316,7 +316,6 @@ client.on(Events.InteractionCreate, async interaction => {
                 .setAccentColor(0xff0000)
                 .addTextDisplayComponents(
                     new TextDisplayBuilder().setContent(
-                        // O ping do cargo agora fica AQUI dentro do texto da embed!
                         `<@&${ROLES.MODERATOR}>\n` + 
                         `**NOVA DENUNCIA REGISTRADA**\n\n` +
                         `**Denunciante:** ${interaction.user} (${interaction.user.id})\n` +
@@ -328,7 +327,6 @@ client.on(Events.InteractionCreate, async interaction => {
                     )
                 );
 
-            // Adiciona a imagem, se houver
             if (contentReported.startsWith('http')) {
                 reportContainer.addMediaGalleryComponents(
                     new MediaGalleryBuilder().addItems(
@@ -337,7 +335,6 @@ client.on(Events.InteractionCreate, async interaction => {
                 );
             }
 
-            // Adiciona os botões DENTRO do contêiner da denúncia
             const modActionRow = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
                     .setCustomId(`del_${targetChannelId}_${targetMessageId}`)
@@ -351,7 +348,6 @@ client.on(Events.InteractionCreate, async interaction => {
 
             reportContainer.addActionRowComponents(modActionRow);
 
-            // Hack: Converte para JSON para forçar a tag "spoiler: true" nativa nas imagens da galeria
             const rawReportContainer = reportContainer.toJSON();
             if (rawReportContainer.components) {
                 rawReportContainer.components.forEach(comp => {
@@ -361,7 +357,6 @@ client.on(Events.InteractionCreate, async interaction => {
                 });
             }
 
-            // Agora enviamos APENAS a flag e os componentes! Nada de `content`.
             await reportChannel.send({
                 flags: MessageFlags.IsComponentsV2,
                 components: [rawReportContainer] 
@@ -374,7 +369,7 @@ client.on(Events.InteractionCreate, async interaction => {
         }
     }
 
-        // 3. DECISÃO DA MODERAÇÃO (APAGAR OU MANTER)
+    // 3. DECISÃO DA MODERAÇÃO (APAGAR OU MANTER)
     if (interaction.isButton() && (interaction.customId.startsWith('del_') || interaction.customId.startsWith('keep_'))) {
         if (!interaction.member.roles.cache.has(ROLES.MODERATOR)) {
             return interaction.reply({ 
@@ -386,7 +381,7 @@ client.on(Events.InteractionCreate, async interaction => {
         const [action, targetChannelId, targetMessageId] = interaction.customId.split('_');
         
         let resultText = '';
-        let resultColor = 0x5865f2; // Cor padrão
+        let resultColor = 0x5865f2; 
 
         if (action === 'del') {
             try {
@@ -394,31 +389,29 @@ client.on(Events.InteractionCreate, async interaction => {
                 const targetMessage = await targetChannel.messages.fetch(targetMessageId);
                 await targetMessage.delete();
 
-                resultText = ` O conteudo infrator foi apagado por ${interaction.user}.`;
-                resultColor = 0x00ff00; // Verde
+                resultText = `O conteudo infrator foi apagado por ${interaction.user}.`;
+                resultColor = 0x00ff00; 
             } catch (error) {
-                resultText = ` A mensagem ja nao existe mais no canal. Acao registrada por ${interaction.user}.`;
-                resultColor = 0xffaa00; // Laranja
+                resultText = `A mensagem ja nao existe mais no canal. Acao registrada por ${interaction.user}.`;
+                resultColor = 0xffaa00; 
             }
         } else if (action === 'keep') {
-            resultText = ` O moderador ${interaction.user} decidiu manter o conteudo.`;
-            resultColor = 0x5865f2; // Azul Discord
+            resultText = `O moderador ${interaction.user} decidiu manter o conteudo.`;
+            resultColor = 0x5865f2; 
         }
 
-        // Cria o contêiner de "Resolvido" para substituir a denúncia V2 antiga
         const resolvedContainer = new ContainerBuilder()
             .setAccentColor(resultColor)
             .addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(resultText)
             );
 
-        // Atualiza a mensagem substituindo o contêiner antigo por esse novo (sem botões)
         await interaction.update({ 
             flags: MessageFlags.IsComponentsV2,
             components: [resolvedContainer] 
         });
     }
-
+});
 
 client.once(Events.ClientReady, () => {
     console.log(`Bot conectado como ${client.user.tag}.`);
