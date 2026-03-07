@@ -1,14 +1,15 @@
 const { 
     Client, GatewayIntentBits, Events, ActionRowBuilder, ButtonBuilder, ButtonStyle,
     MessageFlags, ContainerBuilder, TextDisplayBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder,
-    ComponentType, Collection, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder
+    ComponentType, Collection
 } = require('discord.js');
 const Database = require('better-sqlite3');
 
-// Inicia o banco de dados
+// ----------------------------------------------------
+// INICIALIZAÇÃO DO BANCO DE DADOS
+// ----------------------------------------------------
 const db = new Database('database.sqlite');
 
-// Cria a tabela caso ela não exista
 db.prepare(`
     CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
@@ -19,11 +20,13 @@ db.prepare(`
     )
 `).run();
 
-// Comandos de banco de dados
 const getUserStmt = db.prepare('SELECT * FROM users WHERE id = ?');
 const insertUserStmt = db.prepare('INSERT INTO users (id, username, display_name, avatar, banner) VALUES (?, ?, ?, ?, ?)');
 const updateUserStmt = db.prepare('UPDATE users SET username = ?, display_name = ?, avatar = ?, banner = ? WHERE id = ?');
 
+// ----------------------------------------------------
+// CONFIGURAÇÕES DO BOT
+// ----------------------------------------------------
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -63,9 +66,8 @@ const getReportActionRow = () => {
 };
 
 // ----------------------------------------------------
-// SISTEMA DE NOTIFICAÇÕES USANDO COMPONENTS V2
+// SISTEMA DE NOTIFICAÇÕES (COMPONENTS V2)
 // ----------------------------------------------------
-
 async function sendNotification(channelId, user, changeType, oldValue, newValue) {
     try {
         const channel = await client.channels.fetch(channelId);
@@ -92,10 +94,10 @@ async function sendNotification(channelId, user, changeType, oldValue, newValue)
                 flags: MessageFlags.IsComponentsV2,
                 components: [container] 
             });
-            console.log(`✅ ${changeType} notification sent for ${user.tag}`);
+            console.log(`✅ Notificação enviada: ${changeType} para ${user.tag}`);
         }
     } catch (error) {
-        console.error(`❌ Failed to send ${changeType} notification for ${user.tag}:`, error.message);
+        console.error(`❌ Erro ao enviar notificação de ${changeType} para ${user.tag}:`, error.message);
     }
 }
 
@@ -114,17 +116,16 @@ async function sendTextNotification(channelId, user, type, oldText) {
                 flags: MessageFlags.IsComponentsV2,
                 components: [container] 
             });
-            console.log(`✅ ${type} notification sent for ${user.tag}`);
+            console.log(`✅ Notificação enviada: ${type} para ${user.tag}`);
         }
     } catch (error) {
-        console.error(`❌ Failed to send ${type} notification for ${user.tag}:`, error.message);
+        console.error(`❌ Erro ao enviar notificação de ${type} para ${user.tag}:`, error.message);
     }
 }
 
 // ----------------------------------------------------
 // PROCESSAMENTO DE USUÁRIOS
 // ----------------------------------------------------
-
 async function processUserChange(userId) {
     try {
         const fullUser = await client.users.fetch(userId, { force: true });
@@ -184,12 +185,11 @@ async function processUserChange(userId) {
 }
 
 // ----------------------------------------------------
-// INTERAÇÕES E BOTÕES (DENÚNCIAS E MODALS)
+// INTERAÇÕES: MODALS, BOTÕES E DENÚNCIAS
 // ----------------------------------------------------
-
 client.on(Events.InteractionCreate, async interaction => {
 
-    // 1. QUANDO O USUÁRIO CLICA NO BOTÃO DE REPORTAR (ABRE O MODAL)
+    // 1. CLIQUE NO BOTÃO DE REPORTAR (ABRIR MODAL)
     if (interaction.isButton() && interaction.customId === 'btn_report') {
         const now = Date.now();
         if (reportCooldowns.has(interaction.user.id)) {
@@ -203,50 +203,51 @@ client.on(Events.InteractionCreate, async interaction => {
             }
         }
         
-        // Registra o cooldown apenas na abertura do modal para evitar spam de pop-ups
         reportCooldowns.set(interaction.user.id, now);
-
         const reportedMessage = interaction.message;
 
-        // Cria o Modal
-        const modal = new ModalBuilder()
-            // Passamos o ID do canal e da mensagem no customId do modal para usarmos no envio
-            .setCustomId(`modal_submit_report_${interaction.channel.id}_${reportedMessage.id}`)
-            .setTitle('Denunciar Imagem/GIF');
+        // Modal "Cru" para burlar a limitação e usar o Select Menu + Type 18
+        const rawModal = {
+            title: 'Denunciar Imagem/GIF',
+            custom_id: `modal_submit_report_${interaction.channel.id}_${reportedMessage.id}`,
+            components: [
+                {
+                    type: 18, 
+                    label: 'Qual o motivo da denúncia?',
+                    component: {
+                        type: 3, // String Select Menu
+                        custom_id: 'report_reason',
+                        placeholder: 'Escolha uma opção...',
+                        options: [
+                            { label: 'Conteúdo Explícito (NSFW)', value: 'NSFW', description: 'Nudez ou pornografia' },
+                            { label: 'Gore / Violência Extrema', value: 'Gore', description: 'Sangue ou imagens chocantes' },
+                            { label: 'Assédio / Discurso de Ódio', value: 'Assédio', description: 'Ofensas, racismo, etc.' },
+                            { label: 'Conteúdo Ilegal', value: 'Ilegal', description: 'Drogas, apologia a crimes' },
+                            { label: 'Outro Motivo', value: 'Outro', description: 'Não se enquadra nas anteriores' }
+                        ]
+                    }
+                },
+                {
+                    type: 18, 
+                    label: '⚠️ FALSAS DENÚNCIAS = BANIMENTO!',
+                    description: 'Tem algo a acrescentar? (Opcional)',
+                    component: {
+                        type: 4, // Text Input
+                        custom_id: 'report_details',
+                        style: 2, // Paragraph
+                        max_length: 300,
+                        placeholder: 'Escreva detalhes adicionais. O uso indevido resultará em punição!',
+                        required: false
+                    }
+                }
+            ]
+        };
 
-        // Cria o Menu de Seleção (Dropdown)
-        const reasonSelect = new StringSelectMenuBuilder()
-            .setCustomId('report_reason')
-            .setPlaceholder('Escolha o motivo da denúncia...')
-            .addOptions(
-                { label: 'Conteúdo Explícito (NSFW)', value: 'NSFW - Conteúdo Explícito', description: 'Nudez ou pornografia' },
-                { label: 'Gore / Violência Extrema', value: 'Gore - Violência Extrema', description: 'Imagens chocantes, sangue ou violência real' },
-                { label: 'Assédio / Discurso de Ódio', value: 'Assédio - Discurso de Ódio', description: 'Racismo, homofobia ou ataques pessoais' },
-                { label: 'Conteúdo Ilegal', value: 'Ilegal', description: 'Apologia a crimes, drogas, etc.' },
-                { label: 'Outro Motivo', value: 'Outro', description: 'Não listado nas opções acima' }
-            );
-
-                // Cria a caixa de texto para mais detalhes (Que serve como AVISO)
-        const detailsInput = new TextInputBuilder()
-            .setCustomId('report_details')
-            .setLabel('⚠️ FALSAS DENÚNCIAS RESULTAM EM BANIMENTO!')
-            .setStyle(TextInputStyle.Paragraph)
-            .setPlaceholder('Detalhes (opcional). O uso indevido deste botão resultará em punição!') // Encurtado para caber no limite de 100 caracteres
-            .setRequired(false)
-            .setMaxLength(300);
-
-        // Adiciona as linhas de ação no modal (O Discord exige 1 componente por ActionRow em Modals)
-        const firstActionRow = new ActionRowBuilder().addComponents(reasonSelect);
-        const secondActionRow = new ActionRowBuilder().addComponents(detailsInput);
-
-        modal.addComponents(firstActionRow, secondActionRow);
-
-        // Mostra o Modal para o usuário
-        await interaction.showModal(modal);
+        await interaction.showModal(rawModal);
         return;
     }
 
-    // 2. QUANDO O USUÁRIO ENVIA O MODAL (SUBMIT)
+    // 2. ENVIO DO MODAL DE DENÚNCIA
     if (interaction.isModalSubmit()) {
         if (interaction.customId.startsWith('modal_submit_report_')) {
             const args = interaction.customId.split('_');
@@ -258,29 +259,40 @@ client.on(Events.InteractionCreate, async interaction => {
                 return interaction.reply({ content: '❌ Canal de denúncias não configurado ou encontrado.', ephemeral: true });
             }
 
-            // Resgata os valores que o usuário preencheu/selecionou
             let selectedReason = 'Não especificado';
             let extraDetails = 'Nenhum detalhe adicional';
 
             try {
-                // Tenta puxar o array de valores do Select Menu do Modal
-                const reasonField = interaction.fields.fields.get('report_reason');
-                if (reasonField && reasonField.values && reasonField.values.length > 0) {
-                    selectedReason = reasonField.values[0];
-                }
+                // Função recursiva para vasculhar os componentes crus retornados e achar nossos valores
+                const getVal = (components, id) => {
+                    if (!components) return null;
+                    for (const comp of components) {
+                        if (comp.customId === id) return comp.value ?? comp.values?.[0];
+                        if (comp.components) {
+                            const found = getVal(comp.components, id);
+                            if (found) return found;
+                        }
+                    }
+                    return null;
+                };
 
-                extraDetails = interaction.fields.getTextInputValue('report_details') || 'Nenhum detalhe adicional';
+                selectedReason = getVal(interaction.components, 'report_reason') || 'Não especificado';
+                const detailsRaw = getVal(interaction.components, 'report_details');
+                if (detailsRaw && detailsRaw.trim() !== '') {
+                    extraDetails = detailsRaw;
+                }
             } catch (err) {
                 console.error("Erro ao ler campos do Modal:", err);
             }
 
-            // Busca a mensagem original para extrair o link da imagem novamente
             let reportedMessage;
             let contentReported = 'Conteúdo desconhecido';
+            
             try {
                 const targetChannel = await client.channels.fetch(targetChannelId);
                 reportedMessage = await targetChannel.messages.fetch(targetMessageId);
 
+                // Lê o conteúdo da mensagem, seja V2 Container ou a Embed Antiga
                 if (reportedMessage.flags.has(MessageFlags.IsComponentsV2)) {
                     const containerData = reportedMessage.components[0]?.toJSON();
                     if (containerData && containerData.components) {
@@ -306,7 +318,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 description: `**Denunciante:** ${interaction.user} (${interaction.user.id})\n**Canal:** <#${targetChannelId}>\n**Mensagem Original:** [Ir para a Mensagem](${reportedMessage.url})`,
                 fields: [
                     {
-                        name: 'Motivo da Denúncia',
+                        name: 'Motivo Selecionado',
                         value: selectedReason,
                         inline: true
                     },
@@ -345,10 +357,10 @@ client.on(Events.InteractionCreate, async interaction => {
         }
     }
 
-    // 3. QUANDO UM MODERADOR CLICA NOS BOTÕES DE APAGAR/MANTER
+    // 3. DECISÃO DA MODERAÇÃO (APAGAR OU MANTER)
     if (interaction.isButton() && (interaction.customId.startsWith('del_') || interaction.customId.startsWith('keep_'))) {
         if (!interaction.member.roles.cache.has(ROLES.MODERATOR)) {
-            return interaction.reply({ content: '❌ Acesso negado. Apenas moderadores.', ephemeral: true });
+            return interaction.reply({ content: '❌ Acesso negado. Apenas moderadores podem usar este botão.', ephemeral: true });
         }
 
         const [action, targetChannelId, targetMessageId] = interaction.customId.split('_');
@@ -360,13 +372,12 @@ client.on(Events.InteractionCreate, async interaction => {
                 await targetMessage.delete();
 
                 await interaction.update({ 
-                    content: `
-                     O conteúdo foi **apagado** por ${interaction.user}.`, 
+                    content: ` O conteúdo foi **apagado** por ${interaction.user}.`, 
                     components: [] 
                 });
             } catch (error) {
                 await interaction.update({ 
-                    content: ` A mensagem já não existe mais. (Ação por ${interaction.user})`, 
+                    content: ` A mensagem já não existe mais no canal. (Ação registrada por ${interaction.user})`, 
                     components: [] 
                 });
             }
@@ -379,9 +390,12 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 });
 
+// ----------------------------------------------------
+// EVENTOS PRINCIPAIS
+// ----------------------------------------------------
 client.once(Events.ClientReady, () => {
     console.log(`🚀 Bot conectado como ${client.user.tag}!`);
-    console.log(`💾 Banco de Dados pronto. Sistema de Denúncias V2 (Modal) Ativado.`);
+    console.log(`💾 Banco de Dados pronto. Sistema completo Ativado.`);
 });
 
 client.on(Events.UserUpdate, async (oldUser, newUser) => {
@@ -400,7 +414,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
 
 const token = process.env.DISCORD_BOT_TOKEN;
 if (!token) {
-    console.error('DISCORD_BOT_TOKEN não encontrado!');
+    console.error('DISCORD_BOT_TOKEN não encontrado nas variáveis de ambiente!');
     process.exit(1);
 }
 
