@@ -48,9 +48,8 @@ const ROLES = {
     MODERATOR: '1165308513355046973'
 };
 
-// --- SISTEMA DE COOLDOWN ---
 const reportCooldowns = new Collection();
-const COOLDOWN_AMOUNT = 60 * 1000; // 60 segundos de cooldown
+const COOLDOWN_AMOUNT = 60 * 1000;
 
 function isGif(url) {
     return url && (url.includes('.gif') || url.includes('a_'));
@@ -64,6 +63,25 @@ const getReportActionRow = () => {
             .setStyle(ButtonStyle.Danger)
     );
 };
+
+// ----------------------------------------------------
+// HACK PARA CORRIGIR O CRASH DO DISCORD.JS COM O TYPE 18
+// ----------------------------------------------------
+client.on('raw', packet => {
+    // Se o pacote for um Envio de Modal (MODAL_SUBMIT = 5)
+    if (packet.t === 'INTERACTION_CREATE' && packet.d.type === 5) {
+        const data = packet.d.data;
+        if (data && data.components) {
+            data.components.forEach(comp => {
+                // Se for o novo Form Item do Discord e o discord.js estiver esperando a array...
+                if (comp.type === 18 && comp.component && !comp.components) {
+                    // Nós injetamos a array para enganar o discord.js e evitar o erro do "forEach"
+                    comp.components = [comp.component]; 
+                }
+            });
+        }
+    }
+});
 
 // ----------------------------------------------------
 // SISTEMA DE NOTIFICAÇÕES (COMPONENTS V2)
@@ -189,7 +207,7 @@ async function processUserChange(userId) {
 // ----------------------------------------------------
 client.on(Events.InteractionCreate, async interaction => {
 
-    // 1. CLIQUE NO BOTÃO DE REPORTAR (ABRIR MODAL)
+    // 1. CLIQUE NO BOTÃO DE REPORTAR (ABRIR MODAL V2)
     if (interaction.isButton() && interaction.customId === 'btn_report') {
         const now = Date.now();
         if (reportCooldowns.has(interaction.user.id)) {
@@ -206,7 +224,7 @@ client.on(Events.InteractionCreate, async interaction => {
         reportCooldowns.set(interaction.user.id, now);
         const reportedMessage = interaction.message;
 
-        // Modal "Cru" para burlar a limitação e usar o Select Menu + Type 18
+        // Construindo o JSON exato da documentação que você encontrou!
         const rawModal = {
             title: 'Denunciar Imagem/GIF',
             custom_id: `modal_submit_report_${interaction.channel.id}_${reportedMessage.id}`,
@@ -215,7 +233,7 @@ client.on(Events.InteractionCreate, async interaction => {
                     type: 18, 
                     label: 'Qual o motivo da denúncia?',
                     component: {
-                        type: 3, // String Select Menu
+                        type: 3, 
                         custom_id: 'report_reason',
                         placeholder: 'Escolha uma opção...',
                         options: [
@@ -232,9 +250,9 @@ client.on(Events.InteractionCreate, async interaction => {
                     label: '⚠️ FALSAS DENÚNCIAS = BANIMENTO!',
                     description: 'Tem algo a acrescentar? (Opcional)',
                     component: {
-                        type: 4, // Text Input
+                        type: 4, 
                         custom_id: 'report_details',
-                        style: 2, // Paragraph
+                        style: 2, 
                         max_length: 300,
                         placeholder: 'Escreva detalhes adicionais. O uso indevido resultará em punição!',
                         required: false
@@ -256,34 +274,16 @@ client.on(Events.InteractionCreate, async interaction => {
 
             const reportChannel = client.channels.cache.get(CHANNELS.REPORT_CHANNEL);
             if (!reportChannel) {
-                return interaction.reply({ content: '❌ Canal de denúncias não configurado ou encontrado.', ephemeral: true });
+                return interaction.reply({ content: '❌ Canal de denúncias não configurado.', ephemeral: true });
             }
 
-            let selectedReason = 'Não especificado';
-            let extraDetails = 'Nenhum detalhe adicional';
+            // Graças ao nosso hack do "raw", o discord.js leu os campos com sucesso!
+            // Agora podemos puxar os valores diretamente:
+            const reasonField = interaction.fields.fields.get('report_reason');
+            const selectedReason = reasonField?.values ? reasonField.values[0] : 'Não especificado';
 
-            try {
-                // Função recursiva para vasculhar os componentes crus retornados e achar nossos valores
-                const getVal = (components, id) => {
-                    if (!components) return null;
-                    for (const comp of components) {
-                        if (comp.customId === id) return comp.value ?? comp.values?.[0];
-                        if (comp.components) {
-                            const found = getVal(comp.components, id);
-                            if (found) return found;
-                        }
-                    }
-                    return null;
-                };
-
-                selectedReason = getVal(interaction.components, 'report_reason') || 'Não especificado';
-                const detailsRaw = getVal(interaction.components, 'report_details');
-                if (detailsRaw && detailsRaw.trim() !== '') {
-                    extraDetails = detailsRaw;
-                }
-            } catch (err) {
-                console.error("Erro ao ler campos do Modal:", err);
-            }
+            const detailsField = interaction.fields.fields.get('report_details');
+            const extraDetails = detailsField?.value || 'Nenhum detalhe adicional';
 
             let reportedMessage;
             let contentReported = 'Conteúdo desconhecido';
@@ -292,7 +292,6 @@ client.on(Events.InteractionCreate, async interaction => {
                 const targetChannel = await client.channels.fetch(targetChannelId);
                 reportedMessage = await targetChannel.messages.fetch(targetMessageId);
 
-                // Lê o conteúdo da mensagem, seja V2 Container ou a Embed Antiga
                 if (reportedMessage.flags.has(MessageFlags.IsComponentsV2)) {
                     const containerData = reportedMessage.components[0]?.toJSON();
                     if (containerData && containerData.components) {
@@ -317,21 +316,9 @@ client.on(Events.InteractionCreate, async interaction => {
                 title: '🚨 Nova Denúncia Registrada',
                 description: `**Denunciante:** ${interaction.user} (${interaction.user.id})\n**Canal:** <#${targetChannelId}>\n**Mensagem Original:** [Ir para a Mensagem](${reportedMessage.url})`,
                 fields: [
-                    {
-                        name: 'Motivo Selecionado',
-                        value: selectedReason,
-                        inline: true
-                    },
-                    {
-                        name: 'Detalhes Adicionais',
-                        value: extraDetails,
-                        inline: true
-                    },
-                    {
-                        name: 'Conteúdo Infrator',
-                        value: contentReported.length > 1024 ? contentReported.substring(0, 1021) + '...' : contentReported,
-                        inline: false
-                    }
+                    { name: 'Motivo', value: selectedReason, inline: true },
+                    { name: 'Detalhes Adicionais', value: extraDetails, inline: true },
+                    { name: 'Conteúdo Infrator', value: contentReported.length > 1024 ? contentReported.substring(0, 1021) + '...' : contentReported, inline: false }
                 ],
                 timestamp: new Date().toISOString()
             };
@@ -360,7 +347,7 @@ client.on(Events.InteractionCreate, async interaction => {
     // 3. DECISÃO DA MODERAÇÃO (APAGAR OU MANTER)
     if (interaction.isButton() && (interaction.customId.startsWith('del_') || interaction.customId.startsWith('keep_'))) {
         if (!interaction.member.roles.cache.has(ROLES.MODERATOR)) {
-            return interaction.reply({ content: '❌ Acesso negado. Apenas moderadores podem usar este botão.', ephemeral: true });
+            return interaction.reply({ content: '❌ Acesso negado. Apenas moderadores.', ephemeral: true });
         }
 
         const [action, targetChannelId, targetMessageId] = interaction.customId.split('_');
@@ -390,12 +377,9 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 });
 
-// ----------------------------------------------------
-// EVENTOS PRINCIPAIS
-// ----------------------------------------------------
 client.once(Events.ClientReady, () => {
     console.log(`🚀 Bot conectado como ${client.user.tag}!`);
-    console.log(`💾 Banco de Dados pronto. Sistema completo Ativado.`);
+    console.log(`💾 Banco de Dados pronto. Hack de Modals Type 18 ativado com sucesso!`);
 });
 
 client.on(Events.UserUpdate, async (oldUser, newUser) => {
