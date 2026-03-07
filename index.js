@@ -316,6 +316,8 @@ client.on(Events.InteractionCreate, async interaction => {
                 .setAccentColor(0xff0000)
                 .addTextDisplayComponents(
                     new TextDisplayBuilder().setContent(
+                        // O ping do cargo agora fica AQUI dentro do texto da embed!
+                        `<@&${ROLES.MODERATOR}>\n` + 
                         `**NOVA DENUNCIA REGISTRADA**\n\n` +
                         `**Denunciante:** ${interaction.user} (${interaction.user.id})\n` +
                         `**Canal:** <#${targetChannelId}>\n` +
@@ -359,10 +361,10 @@ client.on(Events.InteractionCreate, async interaction => {
                 });
             }
 
+            // Agora enviamos APENAS a flag e os componentes! Nada de `content`.
             await reportChannel.send({
-                content: `<@&${ROLES.MODERATOR}>`, 
                 flags: MessageFlags.IsComponentsV2,
-                components: [rawReportContainer] // Enviamos o JSON com spoiler ativado e botoes embutidos
+                components: [rawReportContainer] 
             });
 
             return interaction.reply({ 
