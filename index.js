@@ -45,7 +45,7 @@ const CHANNELS = {
 };
 
 const ROLES = {
-    MODERATOR: '1165308513355046973'
+    MODERATOR: '1480052153560076348'
 };
 
 const reportCooldowns = new Collection();
